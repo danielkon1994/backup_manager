@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<ArrayOfDaneKonfiguracyjne xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <DaneKonfiguracyjne>
+    <NazwaKopii>test</NazwaKopii>
+    <NazwaBazy>test</NazwaBazy>
+    <NazwaFolderuLokalnego>test</NazwaFolderuLokalnego>
+    <NazwaFolderuFtp>test</NazwaFolderuFtp>
+    <AutoBackup>false</AutoBackup>
+    <CoIleDni xsi:nil="true" />
+  </DaneKonfiguracyjne>
+</ArrayOfDaneKonfiguracyjne>
