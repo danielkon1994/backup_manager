@@ -33,6 +33,7 @@ namespace BackupManager
 
         XmlSerializeManager xmlSerializeManager;
         SmoManager smoManager;
+        FilesManager filesManager;
 
         public Form1()
         {
@@ -40,6 +41,7 @@ namespace BackupManager
 
             xmlSerializeManager = new XmlSerializeManager();
             smoManager = new SmoManager();
+            filesManager = new FilesManager();
 
             callBackDel = callBackResultMethod;
             backupPercentComplete = backup_PercentComplete;
@@ -47,6 +49,8 @@ namespace BackupManager
             backupInformation = backup_Information;
             // usupełnianie bazy danych testowymi rekordami
             //initializeDatabaseData(300); 
+
+            togglePercentBar(false);
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -141,7 +145,30 @@ namespace BackupManager
             BackupConfigurationData backupConfiguration = xmlSerializeManager.GetConfigurationById(id);
 
             togglePercentBar(true);
-            smoManager.CreateBackup(backupConfiguration, backupPercentComplete, backupComplete);
+
+            bool backupIsIncremental = backupIncremental(backupConfiguration.BackupDays, backupConfiguration.LastBackupDay, backupConfiguration.LocalDirectory);
+            string[] oldFiles = new string[] { };
+            if (!backupIsIncremental)
+            {
+                xmlSerializeManager.LastBackupDateUpdate(backupConfiguration.Id, DateTime.Now);
+                oldFiles = filesManager.GetOldFilesFromLocalDirectory(backupConfiguration.LocalDirectory);
+            }
+
+            string backupFileFullPath = getBackupFileFullPath(backupIsIncremental, backupConfiguration.FileName, backupConfiguration.LocalDirectory);
+
+            SmoConfigurationData smoConfiguration = new SmoConfigurationData()
+            {
+                DatabaseName = backupConfiguration.DatabaseName,
+                Incremental = backupIsIncremental,
+                DeviceName = backupFileFullPath,
+                DeviceType = DeviceType.File,
+                Files = oldFiles
+            };
+            
+            if (!backupIsIncremental && oldFiles.Any())
+                smoManager.CreatedBackupFileManager += filesManager.OnDeleteFiles;
+
+            smoManager.CreateBackup(smoConfiguration, backupPercentComplete, backupComplete);
         }
 
         private void refreshListView()
@@ -169,6 +196,36 @@ namespace BackupManager
                 listViewItem.SubItems.Add(conf.BackupDays.ToString());
                 listViewConf.Items.Add(listViewItem);
             }
+        }
+
+        private bool backupIncremental(int backupDays, DateTime? lastBackupDay, string backupLocalDirectory)
+        {
+            if (DateTime.Now.Day == 1)
+                return false;
+
+            if (smoManager.DaysLeft(backupDays, lastBackupDay) <= 0)
+                return false;
+
+            if (!filesManager.CheckIfHeadCopyExist(backupLocalDirectory))
+                return false;
+
+
+            return true;
+        }
+
+        private string getBackupFileFullPath(bool incrementalCopy, string fileName, string directoryPath)
+        {
+            string fullPath = string.Empty;
+            if (incrementalCopy)
+            {
+                fullPath = $@"{directoryPath}\{fileName}_{DateTime.Now.Month}_{DateTime.Now.Day}_incr.bak";
+            }
+            else
+            {
+                fullPath = $@"{directoryPath}\{fileName}_{DateTime.Now.Month}_{DateTime.Now.Day}_head.bak";
+            }
+
+            return fullPath;
         }
 
         private void checkSelectedListViewItems()

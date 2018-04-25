@@ -90,9 +90,10 @@ namespace BackupManager
             // labelProgressBarBackup
             // 
             this.labelProgressBarBackup.AutoSize = true;
-            this.labelProgressBarBackup.Location = new System.Drawing.Point(418, 268);
+            this.labelProgressBarBackup.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(238)));
+            this.labelProgressBarBackup.Location = new System.Drawing.Point(17, 319);
             this.labelProgressBarBackup.Name = "labelProgressBarBackup";
-            this.labelProgressBarBackup.Size = new System.Drawing.Size(40, 13);
+            this.labelProgressBarBackup.Size = new System.Drawing.Size(65, 20);
             this.labelProgressBarBackup.TabIndex = 14;
             this.labelProgressBarBackup.Text = "Postęp";
             // 
@@ -161,9 +162,9 @@ namespace BackupManager
             // progressBarBackup
             // 
             this.progressBarBackup.Enabled = false;
-            this.progressBarBackup.Location = new System.Drawing.Point(418, 287);
+            this.progressBarBackup.Location = new System.Drawing.Point(21, 342);
             this.progressBarBackup.Name = "progressBarBackup";
-            this.progressBarBackup.Size = new System.Drawing.Size(255, 23);
+            this.progressBarBackup.Size = new System.Drawing.Size(645, 23);
             this.progressBarBackup.TabIndex = 9;
             // 
             // Form1

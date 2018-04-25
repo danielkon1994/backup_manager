@@ -1,4 +1,5 @@
-﻿using BackupManager.Models;
+﻿using BackupManager.Events;
+using BackupManager.Models;
 using Microsoft.SqlServer.Management.Common;
 using Microsoft.SqlServer.Management.Smo;
 using System;
@@ -13,18 +14,16 @@ namespace BackupManager
 {
     public class SmoManager
     {
+        public delegate void CreatedBackupEventHandler(object o, CustomEventArgs e);
+        public event CreatedBackupEventHandler CreatedBackupFileManager;
+        public event EventHandler CreatedBackupFtpManager;
+
         Server server;
         ServerConnection serverConnection;
-        XmlSerializeManager xmlSerializeManager;
-
-        bool deleteLocalFiles;
 
         public SmoManager()
         {
             connectWithServer();
-
-            xmlSerializeManager = new XmlSerializeManager();
-            deleteLocalFiles = false;
         }
 
         public List<string> GetListDatabases()
@@ -44,6 +43,18 @@ namespace BackupManager
             }
 
             return listDatabases;
+        }
+
+        protected virtual void OnCreatedBackupFileManager(string[] oldFiles)
+        {
+            if (CreatedBackupFileManager != null)
+                CreatedBackupFileManager(this, new CustomEventArgs() { Files = oldFiles });
+        }
+
+        protected virtual void OnCreatedBackupFtpManager()
+        {
+            if (CreatedBackupFtpManager != null)
+                CreatedBackupFtpManager(this, EventArgs.Empty);
         }
 
         private void connectWithServer()
@@ -73,20 +84,17 @@ namespace BackupManager
             }
         }
 
-        public void CreateBackup(BackupConfigurationData configurationData, 
+        public void CreateBackup(SmoConfigurationData smoConfiguration,
             PercentCompleteEventHandler backup_PercentComplete = null, 
             ServerMessageEventHandler backup_Complete = null,
             ServerMessageEventHandler backup_Information = null)
         {
             Backup backup = new Backup();
-            backup.Action = BackupActionType.Database;
-            backup.Database = configurationData.DatabaseName;
-
-            string backupFileFullPath = getBackupFileFullPath(configurationData.FileName, configurationData.LocalDirectory);
-            backup.Incremental = backupIncremental(configurationData.Id, backupFileFullPath);
-            backup.Devices.AddDevice(backupFileFullPath, DeviceType.File);
-
-            backup.Initialize = false;
+            backup.Action = smoConfiguration.ActionType;
+            backup.Database = smoConfiguration.DatabaseName;
+            backup.Incremental = smoConfiguration.Incremental;
+            backup.Devices.AddDevice(smoConfiguration.DeviceName, smoConfiguration.DeviceType);
+            backup.Initialize = smoConfiguration.Initialize;
             try { 
                 backup.PercentCompleteNotification = 5;
                 if (backup_PercentComplete != null)
@@ -97,65 +105,19 @@ namespace BackupManager
                     backup.Information += new ServerMessageEventHandler(backup_Information);
 
                 backup.SqlBackupAsync(server);
+
+                OnCreatedBackupFileManager(smoConfiguration.Files);
+
+                OnCreatedBackupFtpManager();
             }
             catch (Exception ex)
             {
-                LogInfo.LogErrorWrite($"Nie można utworzyć backapu bazy danych {configurationData.DatabaseName}", ex);
-            }
-        }
-
-        private bool backupIncremental(string id, string backupFileFullPath)
-        {
-            if (backupFileFullPath.IndexOf("_head.bak") > 0)
-            {
-                xmlSerializeManager.LastBackupDateUpdate(id, DateTime.Now);
-                return false;
-            }
-
-            return true;
-        }
-
-        private string getBackupFileFullPath(string fileName, string directoryPath)
-        {
-            string fullPath = string.Empty;
-            if(checkIfHeadCopyFileExist(directoryPath)) { 
-                fullPath = $@"{directoryPath}\{fileName}_{DateTime.Now.Month}_{DateTime.Now.Day}_incr.bak";
-            }
-            else { 
-                fullPath = $@"{directoryPath}\{fileName}_{DateTime.Now.Month}_{DateTime.Now.Day}_head.bak";
-                deleteLocalFiles = true;
-            }
-
-            return fullPath;
-        }
-
-        private bool checkIfHeadCopyFileExist(string folderPath)
-        {
-            try
-            {
-                createLocalDirectory(folderPath);
-
-                if (Directory.GetFiles(folderPath, "*_head.bak", SearchOption.AllDirectories).Any())
-                    return true;
-
-                return false;
-            }
-            catch(Exception)
-            {
-                return false;
-            }
-        }
-
-        private void createLocalDirectory(string folderPath)
-        {
-            if (!Directory.Exists(folderPath))
-            {
-                Directory.CreateDirectory(folderPath);
+                LogInfo.LogErrorWrite($"Nie można utworzyć backapu bazy danych {smoConfiguration.DatabaseName}", ex);
             }
         }
 
         // obliczanie ile dni pozostało pełnego backup'u
-        private int daysLeft(int backupDays, DateTime? lastBackupDay)
+        public int DaysLeft(int backupDays, DateTime? lastBackupDay)
         {
             double dniZostalo = 0;
             double dni = 0;
