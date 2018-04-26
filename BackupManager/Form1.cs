@@ -147,11 +147,18 @@ namespace BackupManager
             togglePercentBar(true);
 
             bool backupIsIncremental = backupIncremental(backupConfiguration.BackupDays, backupConfiguration.LastBackupDay, backupConfiguration.LocalDirectory);
-            string[] oldFiles = new string[] { };
+            string[] oldFilesLocal = new string[] { };
             if (!backupIsIncremental)
             {
                 xmlSerializeManager.LastBackupDateUpdate(backupConfiguration.Id, DateTime.Now);
-                oldFiles = filesManager.GetOldFilesFromLocalDirectory(backupConfiguration.LocalDirectory);
+                oldFilesLocal = filesManager.GetOldFilesFromLocalDirectory(backupConfiguration.LocalDirectory);
+            }
+
+            FTPManager ftpManager = new FTPManager();
+            string[] oldFilesFtp = new string[] { };
+            if (backupConfiguration.SendToFtp)
+            {
+                oldFilesFtp = ftpManager.GetOldFilesFromFtp("");
             }
 
             string backupFileFullPath = getBackupFileFullPath(backupIsIncremental, backupConfiguration.FileName, backupConfiguration.LocalDirectory);
@@ -162,10 +169,10 @@ namespace BackupManager
                 Incremental = backupIsIncremental,
                 DeviceName = backupFileFullPath,
                 DeviceType = DeviceType.File,
-                Files = oldFiles
+                Files = oldFilesLocal
             };
             
-            if (!backupIsIncremental && oldFiles.Any())
+            if (!backupIsIncremental && oldFilesLocal.Any())
                 smoManager.CreatedBackupFileManager += filesManager.OnDeleteFiles;
 
             smoManager.CreateBackup(smoConfiguration, backupPercentComplete, backupComplete);

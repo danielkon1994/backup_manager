@@ -26,25 +26,6 @@ namespace BackupManager
             connectWithServer();
         }
 
-        public List<string> GetListDatabases()
-        {
-            List<string> listDatabases = new List<string>();
-            try
-            {
-                var databaseCollection = server.Databases;
-                foreach (var db in databaseCollection)
-                {
-                    listDatabases.Add(db.ToString());
-                }
-            }
-            catch (Exception ex)
-            {
-                LogInfo.LogErrorWrite($"Nie można pobrać listy baz danych z serwera", ex);
-            }
-
-            return listDatabases;
-        }
-
         protected virtual void OnCreatedBackupFileManager(string[] oldFiles)
         {
             if (CreatedBackupFileManager != null)
@@ -55,33 +36,6 @@ namespace BackupManager
         {
             if (CreatedBackupFtpManager != null)
                 CreatedBackupFtpManager(this, EventArgs.Empty);
-        }
-
-        private void connectWithServer()
-        {
-            if(server == null)
-            { 
-                try
-                {
-                    String connectionString = ConfigurationManager.ConnectionStrings["ServerName"].ConnectionString;
-                    serverConnection = new ServerConnection(connectionString);
-                    if ((ConfigurationManager.AppSettings["SqlWinAuth"] != "" &&
-                        ConfigurationManager.AppSettings["SqlWinAuth"] != "false") &&
-                        ConfigurationManager.AppSettings["SqlLogin"] != "" &&
-                        ConfigurationManager.AppSettings["SqlPass"] != "")
-                    {
-                        serverConnection.LoginSecure = false;
-                        serverConnection.Login = ConfigurationManager.AppSettings["SqlLogin"];
-                        serverConnection.Password = ConfigurationManager.AppSettings["SqlPass"];
-                    }
-                    server = new Server(serverConnection);
-                    server.ConnectionContext.StatementTimeout = 18000;
-                }
-                catch(Exception ex)
-                {
-                    LogInfo.LogErrorWrite($"Nie udało się połączyć z serwerem", ex);
-                }
-            }
         }
 
         public void CreateBackup(SmoConfigurationData smoConfiguration,
@@ -116,6 +70,25 @@ namespace BackupManager
             }
         }
 
+        public List<string> GetListDatabases()
+        {
+            List<string> listDatabases = new List<string>();
+            try
+            {
+                var databaseCollection = server.Databases;
+                foreach (var db in databaseCollection)
+                {
+                    listDatabases.Add(db.ToString());
+                }
+            }
+            catch (Exception ex)
+            {
+                LogInfo.LogErrorWrite($"Nie można pobrać listy baz danych z serwera", ex);
+            }
+
+            return listDatabases;
+        }
+
         // obliczanie ile dni pozostało pełnego backup'u
         public int DaysLeft(int backupDays, DateTime? lastBackupDay)
         {
@@ -135,6 +108,33 @@ namespace BackupManager
                 }
             }
             return Convert.ToInt32(dniZostalo);
+        }
+
+        private void connectWithServer()
+        {
+            if (server == null)
+            {
+                try
+                {
+                    String connectionString = ConfigurationManager.ConnectionStrings["ServerName"].ConnectionString;
+                    serverConnection = new ServerConnection(connectionString);
+                    if ((ConfigurationManager.AppSettings["SqlWinAuth"] != "" &&
+                        ConfigurationManager.AppSettings["SqlWinAuth"] != "false") &&
+                        ConfigurationManager.AppSettings["SqlLogin"] != "" &&
+                        ConfigurationManager.AppSettings["SqlPass"] != "")
+                    {
+                        serverConnection.LoginSecure = false;
+                        serverConnection.Login = ConfigurationManager.AppSettings["SqlLogin"];
+                        serverConnection.Password = ConfigurationManager.AppSettings["SqlPass"];
+                    }
+                    server = new Server(serverConnection);
+                    server.ConnectionContext.StatementTimeout = 18000;
+                }
+                catch (Exception ex)
+                {
+                    LogInfo.LogErrorWrite($"Nie udało się połączyć z serwerem", ex);
+                }
+            }
         }
     }
 }
