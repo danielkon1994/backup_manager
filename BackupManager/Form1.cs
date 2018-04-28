@@ -25,6 +25,7 @@ namespace BackupManager
         public delegate void ShowBackupPercentCompleteDel(int percent);
         public delegate void ShowBackupMessageDel(string message);
         public delegate void ToggleProgressBar(bool show);
+        public delegate void ToggleFunctionButtonsVisible(bool show);
 
         private CallBackDel callBackDel;
         private PercentCompleteEventHandler backupPercentComplete;
@@ -156,9 +157,9 @@ namespace BackupManager
 
             FTPManager ftpManager = new FTPManager();
             string[] oldFilesFtp = new string[] { };
-            if (backupConfiguration.SendToFtp)
+            if (backupConfiguration.SendToFtp && !string.IsNullOrEmpty(backupConfiguration.FtpDirectory))
             {
-                oldFilesFtp = ftpManager.GetOldFilesFromFtp("");
+                oldFilesFtp = ftpManager.GetOldFiles(backupConfiguration.FtpDirectory);
             }
 
             string backupFileFullPath = getBackupFileFullPath(backupIsIncremental, backupConfiguration.FileName, backupConfiguration.LocalDirectory);
@@ -169,11 +170,22 @@ namespace BackupManager
                 Incremental = backupIsIncremental,
                 DeviceName = backupFileFullPath,
                 DeviceType = DeviceType.File,
-                Files = oldFilesLocal
+                LocalFiles = oldFilesLocal,
+                FtpFiles = oldFilesFtp
             };
             
-            if (!backupIsIncremental && oldFilesLocal.Any())
+            if (!backupIsIncremental && smoConfiguration.LocalFiles.Any())
                 smoManager.CreatedBackupFileManager += filesManager.OnDeleteFiles;
+
+            if (backupConfiguration.SendToFtp && !string.IsNullOrEmpty(backupConfiguration.FtpDirectory))
+            {
+                smoConfiguration.FtpDirectory = backupConfiguration.FtpDirectory;
+
+                if (!backupIsIncremental && smoConfiguration.FtpFiles.Any())
+                    smoManager.CreatedBackupFtpManagerDeleteFiles += ftpManager.OnDeleteFiles;
+
+                smoManager.CreatedBackupFtpManagerUploadFile += ftpManager.OnUploadFile;
+            }
 
             smoManager.CreateBackup(smoConfiguration, backupPercentComplete, backupComplete);
         }
@@ -267,6 +279,7 @@ namespace BackupManager
             message[0] = "Backup został zakończony";
 
             this.BeginInvoke(new ToggleProgressBar(togglePercentBar), false);
+            this.BeginInvoke(new ToggleFunctionButtonsVisible(changeFunctionButtonsVisible), false);
             this.BeginInvoke(new ShowBackupMessageDel(showMessage), message);
         }
 

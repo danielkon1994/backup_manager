@@ -14,5 +14,7 @@ namespace BackupManager.Events
         }
 
         public string[] Files { get; set; }
+
+        public string Path { get; set; }
     }
 }

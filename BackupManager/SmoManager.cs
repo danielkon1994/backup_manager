@@ -16,7 +16,8 @@ namespace BackupManager
     {
         public delegate void CreatedBackupEventHandler(object o, CustomEventArgs e);
         public event CreatedBackupEventHandler CreatedBackupFileManager;
-        public event EventHandler CreatedBackupFtpManager;
+        public event EventHandler<CustomEventArgs> CreatedBackupFtpManagerDeleteFiles;
+        public event EventHandler<CustomEventArgs> CreatedBackupFtpManagerUploadFile;
 
         Server server;
         ServerConnection serverConnection;
@@ -32,10 +33,17 @@ namespace BackupManager
                 CreatedBackupFileManager(this, new CustomEventArgs() { Files = oldFiles });
         }
 
-        protected virtual void OnCreatedBackupFtpManager()
+        protected virtual void OnCreatedBackupFtpManagerDeleteFiles(string[] oldFiles)
         {
-            if (CreatedBackupFtpManager != null)
-                CreatedBackupFtpManager(this, EventArgs.Empty);
+            if (CreatedBackupFtpManagerDeleteFiles != null)
+                CreatedBackupFtpManagerDeleteFiles(this, new CustomEventArgs() { Files = oldFiles });
+        }
+
+        protected virtual void OnCreatedBackupFtpManagerUploadFile(string path, string file)
+        {
+            string[] files = new string[] { file };
+            if (CreatedBackupFtpManagerUploadFile != null)
+                CreatedBackupFtpManagerUploadFile(this, new CustomEventArgs() { Path = path, Files = files });
         }
 
         public void CreateBackup(SmoConfigurationData smoConfiguration,
@@ -60,9 +68,11 @@ namespace BackupManager
 
                 backup.SqlBackupAsync(server);
 
-                OnCreatedBackupFileManager(smoConfiguration.Files);
+                OnCreatedBackupFileManager(smoConfiguration.LocalFiles);
 
-                OnCreatedBackupFtpManager();
+                OnCreatedBackupFtpManagerDeleteFiles(smoConfiguration.FtpFiles);
+
+                OnCreatedBackupFtpManagerUploadFile(smoConfiguration.FtpDirectory, smoConfiguration.DeviceName);
             }
             catch (Exception ex)
             {
