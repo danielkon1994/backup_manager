@@ -16,8 +16,7 @@ namespace BackupManager
     {
         public delegate void CreatedBackupEventHandler(object o, CustomEventArgs e);
         public event CreatedBackupEventHandler CreatedBackupFileManager;
-        public event EventHandler<CustomEventArgs> CreatedBackupFtpManagerDeleteFiles;
-        public event EventHandler<CustomEventArgs> CreatedBackupFtpManagerUploadFile;
+        public event EventHandler<CustomEventArgs> CreatedBackupFtpManager;
 
         Server server;
         ServerConnection serverConnection;
@@ -27,29 +26,21 @@ namespace BackupManager
             connectWithServer();
         }
 
-        protected virtual void OnCreatedBackupFileManager(string[] oldFiles)
+        protected virtual void OnCreatedBackupFileManager(List<string> oldFiles)
         {
             if (CreatedBackupFileManager != null)
-                CreatedBackupFileManager(this, new CustomEventArgs() { Files = oldFiles });
+                CreatedBackupFileManager(this, new CustomEventArgs() { DeleteFiles = oldFiles });
         }
-
-        protected virtual void OnCreatedBackupFtpManagerDeleteFiles(string[] oldFiles)
+        
+        protected virtual void OnCreatedBackupFtpManager(string path, List<string> filesToUpload, List<string> filesToDelete)
         {
-            if (CreatedBackupFtpManagerDeleteFiles != null)
-                CreatedBackupFtpManagerDeleteFiles(this, new CustomEventArgs() { Files = oldFiles });
-        }
-
-        protected virtual void OnCreatedBackupFtpManagerUploadFile(string path, string file)
-        {
-            string[] files = new string[] { file };
-            if (CreatedBackupFtpManagerUploadFile != null)
-                CreatedBackupFtpManagerUploadFile(this, new CustomEventArgs() { Path = path, Files = files });
+            if (CreatedBackupFtpManager != null)
+                CreatedBackupFtpManager(this, new CustomEventArgs() { Path = path, UploadFiles = filesToUpload, DeleteFiles = filesToDelete });
         }
 
         public void CreateBackup(SmoConfigurationData smoConfiguration,
-            PercentCompleteEventHandler backup_PercentComplete = null, 
-            ServerMessageEventHandler backup_Complete = null,
-            ServerMessageEventHandler backup_Information = null)
+            Form1.BackupStatusDel backupStatusDel = null,
+            PercentCompleteEventHandler backup_PercentComplete = null)
         {
             Backup backup = new Backup();
             backup.Action = smoConfiguration.ActionType;
@@ -61,22 +52,38 @@ namespace BackupManager
                 backup.PercentCompleteNotification = 5;
                 if (backup_PercentComplete != null)
                     backup.PercentComplete += new PercentCompleteEventHandler(backup_PercentComplete);
-                if (backup_Complete != null)
-                    backup.Complete += new ServerMessageEventHandler(backup_Complete);
-                if (backup_Information != null)
-                    backup.Information += new ServerMessageEventHandler(backup_Information);
 
-                backup.SqlBackupAsync(server);
+                LogInfo.LogInfoWrite($"Rozpoczęcie tworzenia backup'u bazy danych {smoConfiguration.DatabaseName}");
+                backup.SqlBackup(server);
+                LogInfo.LogInfoWrite($"Utworzono backup bazy danych {smoConfiguration.DatabaseName}");
 
-                OnCreatedBackupFileManager(smoConfiguration.LocalFiles);
+                List<string> filesToDelete = smoConfiguration.LocalFiles.Where(name => !name.Contains(Path.GetFileName(smoConfiguration.DeviceName))).ToList();
+                filesToDelete = getLocalFullPathFileList(smoConfiguration.LocalDirectory, filesToDelete);
+                OnCreatedBackupFileManager(filesToDelete);
+                LogInfo.LogInfoWrite($"Operacje na lokalnych plikach zostały zakończone");
 
-                OnCreatedBackupFtpManagerDeleteFiles(smoConfiguration.FtpFiles);
+                List<string> filesToFtpUpload = smoConfiguration.LocalFiles;
+                filesToFtpUpload.Add(Path.GetFileName(smoConfiguration.DeviceName));
+                filesToFtpUpload = filesToFtpUpload.Except(smoConfiguration.FtpFiles).ToList();
+                filesToFtpUpload = getLocalFullPathFileList(smoConfiguration.LocalDirectory, filesToFtpUpload);
+                
+                List<string> filesToFtpDelete = new List<string>();
+                if(!smoConfiguration.Incremental)
+                {
+                    filesToFtpDelete = getFtpFullPathFileList(smoConfiguration.FtpDirectory, smoConfiguration.FtpFiles);
+                }
 
-                OnCreatedBackupFtpManagerUploadFile(smoConfiguration.FtpDirectory, smoConfiguration.DeviceName);
+                OnCreatedBackupFtpManager(smoConfiguration.FtpDirectory, filesToFtpUpload, filesToFtpDelete);
+                LogInfo.LogInfoWrite($"Operacje na serwerze FTP zostały zakończone");
+
+                backupStatusDel?.Invoke($"Utworzono backup bazy danych {smoConfiguration.DatabaseName}");
+                LogInfo.LogInfoWrite($"Zakończono proces tworzenia backup'u bazy danych {smoConfiguration.DatabaseName}");
             }
             catch (Exception ex)
             {
-                LogInfo.LogErrorWrite($"Nie można utworzyć backapu bazy danych {smoConfiguration.DatabaseName}", ex);
+                LogInfo.LogErrorWrite($"Nie można utworzyć backupu bazy danych {smoConfiguration.DatabaseName}", ex);
+                backupStatusDel?.Invoke($"Nie można utworzyć backupu bazy danych {smoConfiguration.DatabaseName}");
+                return;
             }
         }
 
@@ -99,25 +106,14 @@ namespace BackupManager
             return listDatabases;
         }
 
-        // obliczanie ile dni pozostało pełnego backup'u
-        public int DaysLeft(int backupDays, DateTime? lastBackupDay)
+        private List<string> getLocalFullPathFileList(string localDirectory, List<string> listFiles)
         {
-            double dniZostalo = 0;
-            double dni = 0;
-            if (lastBackupDay != null)
-            {
-                TimeSpan roznica = DateTime.Now - (DateTime)lastBackupDay;
-                dni = roznica.TotalDays;
-                if (dni < 0)
-                {
-                    dniZostalo = 0;
-                }
-                else
-                {
-                    dniZostalo = (double)backupDays - dni;
-                }
-            }
-            return Convert.ToInt32(dniZostalo);
+            return listFiles.Select(item => $@"{localDirectory}\{item}").ToList();
+        }
+
+        private List<string> getFtpFullPathFileList(string ftpDirectory, List<string> listFiles)
+        {
+            return listFiles.Select(item => $@"{ftpDirectory}\{item}").ToList();
         }
 
         private void connectWithServer()

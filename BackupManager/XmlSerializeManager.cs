@@ -24,7 +24,7 @@ namespace BackupManager
         }
 
         // zapisanie do pliku przesłanej konfiguracji
-        public void SaveConfiguration(BackupConfigurationData backupConf, CallBackDel callBack)
+        public void SaveConfiguration(BackupConfigurationData backupConf, Form2.CallBackDel callBack)
         {
             BackupSettings settings;
 
@@ -73,7 +73,7 @@ namespace BackupManager
         }
 
         // zaaktualizowanie pliku konfiguracyjnego
-        public void UpdateConfiguration(string id, BackupConfigurationData backupConf, CallBackDel callBack)
+        public void UpdateConfiguration(string id, BackupConfigurationData backupConf, Form2.CallBackDel callBack)
         {
             // pobranie danych z pliku .xml
             var backupSettings = this.ReadFromXmlFile();

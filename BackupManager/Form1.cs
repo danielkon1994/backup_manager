@@ -15,6 +15,7 @@ using System.Net;
 using System.Diagnostics;
 using System.Configuration;
 using BackupManager.Models;
+using BackupManager.Events;
 //using System.Data.SqlClient;
 
 namespace BackupManager
@@ -26,11 +27,13 @@ namespace BackupManager
         public delegate void ShowBackupMessageDel(string message);
         public delegate void ToggleProgressBar(bool show);
         public delegate void ToggleFunctionButtonsVisible(bool show);
+        public delegate void BackupStatusDel(string backupStatusMessage);
 
         private CallBackDel callBackDel;
+        private BackupStatusDel backupStatusDel;
         private PercentCompleteEventHandler backupPercentComplete;
-        private ServerMessageEventHandler backupComplete;
-        private ServerMessageEventHandler backupInformation;
+        //private ServerMessageEventHandler backupComplete;
+        //private ServerMessageEventHandler backupInformation;
 
         XmlSerializeManager xmlSerializeManager;
         SmoManager smoManager;
@@ -45,9 +48,10 @@ namespace BackupManager
             filesManager = new FilesManager();
 
             callBackDel = callBackResultMethod;
+            backupStatusDel = backup_Status;
             backupPercentComplete = backup_PercentComplete;
-            backupComplete = backup_Complete;
-            backupInformation = backup_Information;
+            //backupComplete = backup_Complete;
+            //backupInformation = backup_Information;
             // usupełnianie bazy danych testowymi rekordami
             //initializeDatabaseData(300); 
 
@@ -136,6 +140,7 @@ namespace BackupManager
         private void buttonUtworzKopie_Click(object sender, EventArgs e)
         {
             checkSelectedListViewItems();
+            changeFunctionButtonsVisible(false);
 
             string id = listViewConf.SelectedItems[0].SubItems[0].Text;
             if (string.IsNullOrEmpty(id))
@@ -147,22 +152,17 @@ namespace BackupManager
 
             togglePercentBar(true);
 
-            bool backupIsIncremental = backupIncremental(backupConfiguration.BackupDays, backupConfiguration.LastBackupDay, backupConfiguration.LocalDirectory);
-            string[] oldFilesLocal = new string[] { };
-            if (!backupIsIncremental)
-            {
-                xmlSerializeManager.LastBackupDateUpdate(backupConfiguration.Id, DateTime.Now);
-                oldFilesLocal = filesManager.GetOldFilesFromLocalDirectory(backupConfiguration.LocalDirectory);
-            }
+            bool backupIsIncremental = filesManager.BackupIncremental(backupConfiguration.BackupDays, backupConfiguration.LastBackupDay, backupConfiguration.LocalDirectory);
+            List<string> localFiles = filesManager.GetOldFilesFromLocalDirectory(backupConfiguration.LocalDirectory);
 
             FTPManager ftpManager = new FTPManager();
-            string[] oldFilesFtp = new string[] { };
+            List<string> ftpFiles = new List<string>();
             if (backupConfiguration.SendToFtp && !string.IsNullOrEmpty(backupConfiguration.FtpDirectory))
             {
-                oldFilesFtp = ftpManager.GetOldFiles(backupConfiguration.FtpDirectory);
+                ftpFiles = ftpManager.GetOldFiles(backupConfiguration.FtpDirectory);
             }
 
-            string backupFileFullPath = getBackupFileFullPath(backupIsIncremental, backupConfiguration.FileName, backupConfiguration.LocalDirectory);
+            string backupFileFullPath = filesManager.GetBackupFileFullPath(backupIsIncremental, backupConfiguration.FileName, backupConfiguration.LocalDirectory);
 
             SmoConfigurationData smoConfiguration = new SmoConfigurationData()
             {
@@ -170,24 +170,29 @@ namespace BackupManager
                 Incremental = backupIsIncremental,
                 DeviceName = backupFileFullPath,
                 DeviceType = DeviceType.File,
-                LocalFiles = oldFilesLocal,
-                FtpFiles = oldFilesFtp
+                LocalFiles = localFiles,
+                FtpFiles = ftpFiles,
+                LocalDirectory = backupConfiguration.LocalDirectory
             };
-            
-            if (!backupIsIncremental && smoConfiguration.LocalFiles.Any())
+
+            if (!backupIsIncremental)
+            {
+                xmlSerializeManager.LastBackupDateUpdate(backupConfiguration.Id, DateTime.Now);
                 smoManager.CreatedBackupFileManager += filesManager.OnDeleteFiles;
+            }
 
             if (backupConfiguration.SendToFtp && !string.IsNullOrEmpty(backupConfiguration.FtpDirectory))
             {
                 smoConfiguration.FtpDirectory = backupConfiguration.FtpDirectory;
-
-                if (!backupIsIncremental && smoConfiguration.FtpFiles.Any())
-                    smoManager.CreatedBackupFtpManagerDeleteFiles += ftpManager.OnDeleteFiles;
-
-                smoManager.CreatedBackupFtpManagerUploadFile += ftpManager.OnUploadFile;
+                smoManager.CreatedBackupFtpManager += ftpManager.OnUploadFile;
             }
 
-            smoManager.CreateBackup(smoConfiguration, backupPercentComplete, backupComplete);
+            Task backup = new Task(() => { smoManager.CreateBackup(smoConfiguration, backupStatusDel, backupPercentComplete); });
+            backup.Start();
+            backup.ContinueWith((t) => {
+                smoManager.CreatedBackupFileManager -= filesManager.OnDeleteFiles;
+                smoManager.CreatedBackupFtpManager -= ftpManager.OnUploadFile;
+            });
         }
 
         private void refreshListView()
@@ -196,11 +201,18 @@ namespace BackupManager
             loadListView();
         }
 
-        private void changeFunctionButtonsVisible(bool widocznosc)
+        private void changeFunctionButtonsVisible(bool visible)
         {
-            buttonEditConf.Enabled = widocznosc;
-            buttonDeleteConf.Enabled = widocznosc;
-            buttonUtworzKopie.Enabled = widocznosc;
+            buttonEditConf.Enabled = visible;
+            buttonDeleteConf.Enabled = visible;
+            buttonUtworzKopie.Enabled = visible;
+        }
+
+        private void changeFunctionButtonsActivity(bool visible)
+        {
+            buttonEditConf.Enabled = visible;
+            buttonDeleteConf.Enabled = visible;
+            buttonUtworzKopie.Enabled = visible;
         }
 
         private void loadListView()
@@ -215,36 +227,6 @@ namespace BackupManager
                 listViewItem.SubItems.Add(conf.BackupDays.ToString());
                 listViewConf.Items.Add(listViewItem);
             }
-        }
-
-        private bool backupIncremental(int backupDays, DateTime? lastBackupDay, string backupLocalDirectory)
-        {
-            if (DateTime.Now.Day == 1)
-                return false;
-
-            if (smoManager.DaysLeft(backupDays, lastBackupDay) <= 0)
-                return false;
-
-            if (!filesManager.CheckIfHeadCopyExist(backupLocalDirectory))
-                return false;
-
-
-            return true;
-        }
-
-        private string getBackupFileFullPath(bool incrementalCopy, string fileName, string directoryPath)
-        {
-            string fullPath = string.Empty;
-            if (incrementalCopy)
-            {
-                fullPath = $@"{directoryPath}\{fileName}_{DateTime.Now.Month}_{DateTime.Now.Day}_incr.bak";
-            }
-            else
-            {
-                fullPath = $@"{directoryPath}\{fileName}_{DateTime.Now.Month}_{DateTime.Now.Day}_head.bak";
-            }
-
-            return fullPath;
         }
 
         private void checkSelectedListViewItems()
@@ -265,18 +247,10 @@ namespace BackupManager
             this.BeginInvoke(new ShowBackupPercentCompleteDel(showPercentComplete), percent);
         }
 
-        private void backup_Information(object sender, ServerMessageEventArgs e)
+        private void backup_Status(string backupMessage)
         {
             object[] message = new object[1];
-            message[0] = e.Error.Message;
-
-            this.BeginInvoke(new ShowBackupMessageDel(showMessage), message);
-        }
-
-        private void backup_Complete(object sender, ServerMessageEventArgs e)
-        {
-            object[] message = new object[1];
-            message[0] = "Backup został zakończony";
+            message[0] = backupMessage;
 
             this.BeginInvoke(new ToggleProgressBar(togglePercentBar), false);
             this.BeginInvoke(new ToggleFunctionButtonsVisible(changeFunctionButtonsVisible), false);

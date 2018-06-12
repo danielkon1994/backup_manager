@@ -10,11 +10,16 @@ namespace BackupManager.Events
     {
         public CustomEventArgs()
         {
-            Files = new string[] { };
+            UploadFiles = new List<string>();
+            DeleteFiles = new List<string>();
         }
 
-        public string[] Files { get; set; }
+        public List<string> UploadFiles { get; set; }
+
+        public List<string> DeleteFiles { get; set; }
 
         public string Path { get; set; }
+
+        public string Message { get; set; }
     }
 }

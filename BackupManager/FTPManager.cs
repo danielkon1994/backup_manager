@@ -39,17 +39,25 @@ namespace BackupManager
 
         public void OnDeleteFiles(object o, CustomEventArgs a)
         {
-            if (a.Files.Any())
-                DeleteOldFiles(a.Files);
+            if (a.DeleteFiles.Any())
+                DeleteOldFiles(a.DeleteFiles);
         }
 
         public void OnUploadFile(object o, CustomEventArgs a)
         {
-            if (a.Files.Any())
-                UploadFile(a.Path, a.Files.FirstOrDefault());
+            if (a.DeleteFiles.Any())
+                DeleteOldFiles(a.DeleteFiles);
+
+            if (a.UploadFiles.Any())
+            {
+                if(a.UploadFiles.Count() == 1)
+                    UploadFile(a.Path, a.UploadFiles.FirstOrDefault()).Wait();
+                if(a.UploadFiles.Count() > 1)
+                    UploadFiles(a.Path, a.UploadFiles);
+            }
         }
 
-        public string[] GetOldFiles(string folderPath)
+        public List<string> GetOldFiles(string folderPath)
         {
             List<string> listFiles = new List<string>();
 
@@ -65,26 +73,42 @@ namespace BackupManager
                     {
                         string responseString = sr.ReadToEnd();
                         var results = responseString.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries).ToList();
-                        if(results.Any())
-                        {
-                            results.ForEach(i =>
-                            {
-                                i = $@"{folderPath}/{i}";
-                            });
-                        }
+                        //if(results.Any())
+                        //{
+                        //    results.ForEach(i => {
+                        //        listFiles.Add($@"{folderPath}/{i}");
+                        //    });
+                        //}
                         listFiles.AddRange(results);
                     }
                 }
             }
-            catch (Exception ex)
+            catch (WebException ex)
             {
-                LogInfo.LogErrorWrite(ex);
+                FtpWebResponse ftpWebResponse = (FtpWebResponse)ex.Response;
+                if(ftpWebResponse.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
+                {
+                    ftpWebResponse.Close();
+                    this.CreateDirectory(folderPath);
+                }
+                else
+                { 
+                    LogInfo.LogErrorWrite(ex);
+                }
             }
 
-            return listFiles.ToArray();
+            return listFiles;
         }
 
-        public void UploadFile(string ftpFolderPath, string localFilePath)
+        public void UploadFiles(string ftpFolderPath, List<string> filesPathArr)
+        {
+            foreach(string filePath in filesPathArr)
+            {
+                this.UploadFile(ftpFolderPath, filePath).Wait();
+            }
+        }
+
+        public async Task UploadFile(string ftpFolderPath, string localFilePath)
         {
             try
             {
@@ -98,16 +122,19 @@ namespace BackupManager
                 ftpWebRequest.KeepAlive = true;
                 ftpWebRequest.UseBinary = true;
 
-                byte[] fileContents = new byte[] { };
-                using (StreamReader sourceStream = new StreamReader(localFilePath))
+                using (FileStream fs = new FileStream(localFilePath, FileMode.Open, FileAccess.Read))
                 { 
-                    fileContents = Encoding.UTF8.GetBytes(sourceStream.ReadToEnd());
-                }
-                ftpWebRequest.ContentLength = fileContents.Length;
+                    using (Stream requestStream = await ftpWebRequest.GetRequestStreamAsync())
+                    {
+                        byte[] buffer = new byte[8092];
+                        int read = 0;
+                        while ((read = await fs.ReadAsync(buffer, 0, buffer.Length)) != 0)
+                        {
+                            await requestStream.WriteAsync(buffer, 0, read);
+                        }
 
-                using (Stream requestStream = ftpWebRequest.GetRequestStream())
-                {
-                    requestStream.Write(fileContents, 0, fileContents.Length);
+                        await requestStream.FlushAsync();
+                    }
                 }
 
                 FtpWebResponse ftpWebResponse = (FtpWebResponse)ftpWebRequest.GetResponse();
@@ -119,7 +146,7 @@ namespace BackupManager
             }
         }
 
-        public void DeleteOldFiles(string[] oldFiles)
+        public void DeleteOldFiles(List<string> oldFiles)
         {
             try
             {
@@ -141,14 +168,26 @@ namespace BackupManager
                 FtpWebRequest ftpWebRequest = (FtpWebRequest)WebRequest.Create($@"ftp://{serwerAddress}:{serwerAddressPort}/{filePath}");
                 ftpWebRequest.Method = WebRequestMethods.Ftp.DeleteFile;
                 ftpWebRequest.Credentials = new NetworkCredential(serwerLogin, serwerPassword);
+                
+                FtpWebResponse response = (FtpWebResponse)ftpWebRequest.GetResponse();
+                response.Close();
+            }
+            catch (Exception ex)
+            {
+                LogInfo.LogErrorWrite(ex);
+            }
+        }
 
-                using (FtpWebResponse ftpWebResponse = (FtpWebResponse)ftpWebRequest.GetResponse())
-                {
-                    using (StreamReader sr = new StreamReader(ftpWebResponse.GetResponseStream()))
-                    {
-                        sr.ReadToEnd();
-                    }
-                }
+        public void CreateDirectory(string folderPath)
+        {
+            try
+            {
+                FtpWebRequest ftpWebRequest = (FtpWebRequest)WebRequest.Create($@"ftp://{serwerAddress}:{serwerAddressPort}/{folderPath}");
+                ftpWebRequest.Method = WebRequestMethods.Ftp.MakeDirectory;
+                ftpWebRequest.Credentials = new NetworkCredential(serwerLogin, serwerPassword);
+
+                FtpWebResponse ftpWebResponse = (FtpWebResponse)ftpWebRequest.GetResponse();
+                ftpWebResponse.Close();
             }
             catch (Exception ex)
             {

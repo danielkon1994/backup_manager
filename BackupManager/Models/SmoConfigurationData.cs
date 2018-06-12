@@ -11,8 +11,8 @@ namespace BackupManager.Models
     {
         public SmoConfigurationData()
         {
-            LocalFiles = new string[] { };
-            FtpFiles = new string[] { };
+            LocalFiles = new List<string>();
+            FtpFiles = new List<string>();
         }
 
         public BackupActionType ActionType { get; set; } = BackupActionType.Database;
@@ -26,9 +26,10 @@ namespace BackupManager.Models
 
         public bool Initialize { get; set; } = false;
 
-        public string[] LocalFiles { get; set; }
+        public string LocalDirectory { get; set; }
+        public List<string> LocalFiles { get; set; }
 
         public string FtpDirectory { get; set; }
-        public string[] FtpFiles { get; set; }
+        public List<string> FtpFiles { get; set; }
     }
 }

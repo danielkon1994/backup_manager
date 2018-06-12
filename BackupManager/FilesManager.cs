@@ -12,8 +12,8 @@ namespace BackupManager
     {
         public void OnDeleteFiles(object o, CustomEventArgs a)
         {
-            if (a.Files.Any())
-                DeleteOldFilesFromLocalDirectory(a.Files);
+            if (a.DeleteFiles.Any())
+                DeleteOldFilesFromLocalDirectory(a.DeleteFiles);
         }
 
         public bool CheckIfHeadCopyExist(string folderPath)
@@ -34,27 +34,81 @@ namespace BackupManager
             }
         }
 
-        public string[] GetOldFilesFromLocalDirectory(string folderPath)
+        public List<string> GetOldFilesFromLocalDirectory(string folderPath)
         {
+            List<string> filesList = new List<string>();
             try
             {
-                return Directory.GetFiles(folderPath).ToArray();
+                //return Directory.GetFiles(folderPath).ToList();
+                string[] files = Directory.GetFiles(folderPath);
+                foreach (string file in files)
+                    filesList.Add(Path.GetFileName(file));
             }
             catch (Exception ex)
             {
                 LogInfo.LogErrorWrite(ex);
             }
 
-            return new string[] { };
+            return filesList;
         }
 
-        public void DeleteOldFilesFromLocalDirectory(string[] oldFiles)
+        public bool BackupIncremental(int backupDays, DateTime? lastBackupDay, string backupLocalDirectory)
         {
-            foreach(string fileName in oldFiles)
+            if (DateTime.Now.Day == 1)
+                return false;
+
+            if (this.DaysLeft(backupDays, lastBackupDay) <= 0)
+                return false;
+
+            if (!this.CheckIfHeadCopyExist(backupLocalDirectory))
+                return false;
+
+            return true;
+        }
+
+        // obliczanie ile dni pozostało pełnego backup'u
+        public int DaysLeft(int backupDays, DateTime? lastBackupDay)
+        {
+            double dniZostalo = 0;
+            double dni = 0;
+            if (lastBackupDay != null)
             {
-                if (File.Exists(fileName))
-                    File.Delete(fileName);
+                TimeSpan roznica = DateTime.Now - (DateTime)lastBackupDay;
+                dni = roznica.TotalDays;
+                if (dni < 0)
+                {
+                    dniZostalo = 0;
+                }
+                else
+                {
+                    dniZostalo = (double)backupDays - dni;
+                }
             }
+            return Convert.ToInt32(dniZostalo);
+        }
+
+        public void DeleteOldFilesFromLocalDirectory(List<string> oldFiles)
+        {
+            foreach(string filePath in oldFiles)
+            {
+                if (File.Exists(filePath))
+                    File.Delete(filePath);
+            }
+        }
+
+        public string GetBackupFileFullPath(bool incrementalCopy, string fileName, string directoryPath)
+        {
+            string fullPath = string.Empty;
+            if (incrementalCopy)
+            {
+                fullPath = $@"{directoryPath}\{fileName}_{DateTime.Now.Month}_{DateTime.Now.Day}_incr.bak";
+            }
+            else
+            {
+                fullPath = $@"{directoryPath}\{fileName}_{DateTime.Now.Month}_{DateTime.Now.Day}_head.bak";
+            }
+
+            return fullPath;
         }
 
         private void createLocalDirectory(string folderPath)
