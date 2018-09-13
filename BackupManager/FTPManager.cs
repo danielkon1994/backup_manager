@@ -121,17 +121,19 @@ namespace BackupManager
                 ftpWebRequest.Credentials = new NetworkCredential(serwerLogin, serwerPassword);
                 ftpWebRequest.KeepAlive = true;
                 ftpWebRequest.UseBinary = true;
+                ftpWebRequest.Timeout = -1;
 
                 using (FileStream fs = new FileStream(localFilePath, FileMode.Open, FileAccess.Read))
                 { 
                     using (Stream requestStream = await ftpWebRequest.GetRequestStreamAsync())
                     {
-                        byte[] buffer = new byte[8092];
-                        int read = 0;
-                        while ((read = await fs.ReadAsync(buffer, 0, buffer.Length)) != 0)
-                        {
-                            await requestStream.WriteAsync(buffer, 0, read);
-                        }
+                        //byte[] buffer = new byte[8092];
+                        //int read = 0;
+                        //while ((read = await fs.ReadAsync(buffer, 0, buffer.Length)) != 0)
+                        //{
+                        //    await requestStream.WriteAsync(buffer, 0, read);
+                        //}
+                        fs.CopyTo(requestStream);
 
                         await requestStream.FlushAsync();
                     }
@@ -142,6 +144,7 @@ namespace BackupManager
             }
             catch (Exception ex)
             {
+                LogInfo.LogErrorWrite("Wystąpił błąd podczas uploadu na serwer FTP");
                 LogInfo.LogErrorWrite(ex);
             }
         }
@@ -168,7 +171,8 @@ namespace BackupManager
                 FtpWebRequest ftpWebRequest = (FtpWebRequest)WebRequest.Create($@"ftp://{serwerAddress}:{serwerAddressPort}/{filePath}");
                 ftpWebRequest.Method = WebRequestMethods.Ftp.DeleteFile;
                 ftpWebRequest.Credentials = new NetworkCredential(serwerLogin, serwerPassword);
-                
+                ftpWebRequest.Timeout = -1;
+
                 FtpWebResponse response = (FtpWebResponse)ftpWebRequest.GetResponse();
                 response.Close();
             }
