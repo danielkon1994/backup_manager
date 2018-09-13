@@ -171,6 +171,7 @@ namespace BackupManager
                 FtpWebRequest ftpWebRequest = (FtpWebRequest)WebRequest.Create($@"ftp://{serwerAddress}:{serwerAddressPort}/{filePath}");
                 ftpWebRequest.Method = WebRequestMethods.Ftp.DeleteFile;
                 ftpWebRequest.Credentials = new NetworkCredential(serwerLogin, serwerPassword);
+                ftpWebRequest.KeepAlive = true;
                 ftpWebRequest.Timeout = -1;
 
                 FtpWebResponse response = (FtpWebResponse)ftpWebRequest.GetResponse();
